@@ -1,0 +1,139 @@
+const ratio = 1.58
+const playerR = 54
+const playerG = 60
+const playerB = 99 
+const screen = '/images/screen.png'
+
+function stop(){
+	console.log('stop..')
+	window.stopFlag = true
+}
+
+function jump(){
+	window.stopFlag = false
+    let time = window.dis*ratio
+    console.log('time..', time)
+    get('/jump?t='+time, (data)=>{
+        console.log('jump..', data)
+		setTimeout(()=>{
+			screencap()
+		}, 1000)
+    })
+}
+
+function screencap(){
+    get('/screencap', (data)=>{
+        console.log('fetch..', data)
+        let img = document.getElementById('img')
+        img.src = screen + '?t=' + new Date().getTime()
+    })
+}
+
+function get(path, cb){
+    let xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = _=>{
+        if(xhr.readyState==4 && xhr.status==200){
+            cb(xhr.responseText)
+        }
+    }
+    xhr.open('GET', path)
+    xhr.send()
+}
+
+function colorTolerance(r,g,b,r2,g2,b2,t){
+	return Math.abs(r-r2) <= t && 
+			Math.abs(g-g2) <= t &&
+			Math.abs(b-b2) <= t
+}
+
+function colorTolerance2(r,g,b,r2,g2,b2,t){
+	return Math.abs(r-r2) > t || 
+			Math.abs(g-g2) > t ||
+			Math.abs(b-b2) > t
+}
+
+function test(){
+	let c = document.getElementById('cv')
+	c.width = img.width
+	c.height = img.height
+
+	let ctx = c.getContext('2d')
+	ctx.drawImage(img, 0, 0)
+    ctx.fillStyle='#f00'
+	let data = ctx.getImageData(0,0,1080,1920).data
+
+	let arr = []
+	let bg, boardTop, boardBg
+	for(let y=c.height/4; y<c.height*3/4; y++){
+		for(let x=0; x<c.width; x++){
+			let i = y*c.width+x
+			i *= 4 //rgba
+			if(colorTolerance(data[i],data[i+1],data[i+2],
+				playerR,playerG,playerB,15)){
+				arr.push({x:x, y:y}) // player points
+                //ctx.fillRect(x,y,1,1)
+			}
+
+			if(!bg) bg = [data[i],data[i+1],data[i+2]]
+			if(!boardTop) {
+				if(colorTolerance2(data[i],data[i+1],data[i+2],
+					bg[0],bg[1],bg[2],20)){
+					// player taller than board
+					if(colorTolerance(data[i],data[i+1],data[i+2],
+						playerR,playerG,playerB,180)){
+						console.log(x,y)
+						console.log(data[i],data[i+1],data[i+2])
+					}
+
+					boardTop = {x,y}
+					ctx.fillRect(x,y,10,10)
+					i = i+30*c.width*4 // move down a little bit to get accurate color
+					boardBg = [data[i],data[i+1],data[i+2]]
+                    console.log('bg and bbg:', bg, boardBg)
+					console.log('boardTop:', boardTop)
+				}
+			}
+		}
+	}
+    if(!boardTop){
+        console.log('recognition failed..')
+        return
+    }
+
+    let boardHeight = 233
+    let boardBottom
+	for(let y=boardTop.y+boardHeight; y>=0; y--){
+		let i = y*c.width+boardTop.x
+		i *= 4
+		if(colorTolerance(data[i],data[i+1],data[i+2],
+			boardBg[0],boardBg[1],boardBg[2],10)){
+			ctx.fillRect(boardTop.x,y,10,10)
+            boardBottom = {x:boardTop.x, y:y}
+            console.log('boardBottom:', boardBottom)
+			break
+		}
+	}
+
+	arr.sort((a,b)=>{
+		return b.y-a.y
+	})
+
+	let n=20, sum=0
+	for(let i=0; i<n; i++){
+		sum += arr[i].x
+	}
+	let avgX = sum/n
+    // start point
+    let startP = {x:avgX, y:arr[0].y}
+	ctx.fillRect(startP.x, startP.y, 10, 10)
+    // dest point
+    let destP = {x:boardTop.x, y:(boardTop.y+boardBottom.y)/2}
+    ctx.fillRect(destP.x, destP.y, 10, 10)
+    // distance
+    let dis = Math.sqrt(Math.pow(destP.x-startP.x, 2),Math.pow(destP.y-startP.y, 2))
+
+    console.log('start, dest: ', startP, destP)
+    console.log('distance: ', dis)
+    window.dis = dis
+	if(!window.stopFlag) jump()
+}

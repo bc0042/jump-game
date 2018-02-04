@@ -1,0 +1,150 @@
+const ratio = 1.57
+const chessRGB = [58, 58, 76]
+const chessRGB2 = [74, 62, 103]
+const screen = '/images/screen.png'
+
+function stop(){
+	console.log('stop..')
+	window.stopFlag = true
+}
+
+function jump(){
+	window.stopFlag = false
+    let time = window.dis*ratio
+    console.log('time..', time)
+    get('/jump?t='+time, (data)=>{
+        console.log('jump..', data)
+		setTimeout(()=>{
+			//screencap()
+		}, 1000)
+    })
+}
+
+function screencap(){
+    get('/screencap', (data)=>{
+        console.log('fetch..', data)
+        let img = document.getElementById('img')
+        img.src = screen + '?t=' + new Date().getTime()
+    })
+}
+
+function get(path, cb){
+    let xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = _=>{
+        if(xhr.readyState==4 && xhr.status==200){
+            cb(xhr.responseText)
+        }
+    }
+    xhr.open('GET', path)
+    xhr.send()
+}
+
+function calc(c, c2){
+	return Math.sqrt(
+		Math.pow(c[0]-c2[0], 2) +
+		Math.pow(c[1]-c2[1], 2) +
+		Math.pow(c[2]-c2[2], 2) 
+	)
+}
+
+function getRGB(data, x, y){
+	let i = x+y*cv.width
+	i *= 4 // rgba
+	return [data[i],data[i+1],data[i+2]]
+}
+
+function paint(p){
+	ctx.fillRect(p.x, p.y, 10, 10)
+}
+
+function test(){
+	let cv = document.getElementById('cv')
+	cv.width = img.width
+	cv.height = img.height
+
+	let ctx = cv.getContext('2d')
+	ctx.drawImage(img, 0, 0)
+    ctx.fillStyle='#f00'
+	let data = ctx.getImageData(0,0,cv.width,cv.height).data
+	window.ctx = ctx
+	window.data = data
+
+	let t1 = new Date().getTime()
+	let startP = getStartPoint()
+	console.log('start:', startP)
+
+	let destP = getDestPoint()
+	console.log('dest', destP)
+    // distance
+	window.dis = Math.sqrt(Math.pow(destP.x-startP.x, 2),Math.pow(destP.y-startP.y, 2))
+	let t2 = new Date().getTime()
+	console.log('cost:', (t2 - t1))
+}
+
+function getStartPoint(){
+	let arr = []
+	// scan the pixels and find the chess
+	for(let y=cv.height/4; y<cv.height*3/4; y++){
+		for(let x=0; x<cv.width; x++){
+			let c = getRGB(data, x, y)
+			let d = calc(c, chessRGB2)
+			if(d<15){
+				// the color is close to the chess
+				//ctx.fillRect(x, y, 3, 3)
+				arr.push({x:x, y:y})
+			}
+		}
+		if(arr.length>100) break
+	}
+
+	let sumx = sumy = 0
+	for(let i in arr){
+		sumx += arr[i].x
+		sumy += arr[i].y
+	}
+	let x = Math.round(sumx / arr.length)
+	let y = Math.round(sumy / arr.length)
+	let startP = {x:x, y:y+200}
+	paint(startP)
+	return startP
+}
+
+function getDestPoint(){
+	let boxTop, boxBottom
+	let bg = getRGB(data, 0, cv.height/4)
+	// scan the pixel and find the top point of the box
+	for(let y=cv.height/4; y<cv.height*3/4; y++){
+		for(let x=0; x<cv.width; x++){
+			let c = getRGB(data, x, y)
+			let d = calc(c, bg)
+			// the color is not close to bg color
+			if(d>22){
+				let c2 = getRGB(data, x+5, y+5)
+				let d2 = calc(c2, chessRGB)
+				if(d2<20){
+					// the color is close to chess color
+					break
+				}else{
+					boxTop = {x:x, y:y}
+				}
+			}
+		}
+		if(boxTop) break
+	}
+	paint(boxTop)
+	//console.log('box top:', boxTop)
+
+	let c1 = getRGB(data, boxTop.x, boxTop.y+5)
+	for(let i=255; i>0; i--){
+		let c2 = getRGB(data, boxTop.x, boxTop.y+i)
+		let d = calc(c1, c2)
+		if(d<20){
+			boxBottom = {x:boxTop.x, y:boxTop.y+i}
+			paint(boxBottom)
+			break
+		}
+	}
+	let y = Math.round((boxTop.y+boxBottom.y)/2)
+	return {x:boxTop.x, y:y}
+}
+

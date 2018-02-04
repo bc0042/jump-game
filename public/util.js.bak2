@@ -1,0 +1,157 @@
+const ratio = 1.58
+const playerR = 54
+const playerG = 60
+const playerB = 99 
+const screen = '/images/screen.png'
+
+function stop(){
+	console.log('stop..')
+	window.stopFlag = true
+}
+
+function jump(){
+	window.stopFlag = false
+    let time = window.dis*ratio
+    console.log('time..', time)
+    get('/jump?t='+time, (data)=>{
+        console.log('jump..', data)
+		setTimeout(()=>{
+			screencap()
+		}, 1000)
+    })
+}
+
+function screencap(){
+    get('/screencap', (data)=>{
+        console.log('fetch..', data)
+        let img = document.getElementById('img')
+        img.src = screen + '?t=' + new Date().getTime()
+    })
+}
+
+function get(path, cb){
+    let xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = _=>{
+        if(xhr.readyState==4 && xhr.status==200){
+            cb(xhr.responseText)
+        }
+    }
+    xhr.open('GET', path)
+    xhr.send()
+}
+
+function calc(c, c2){
+	return Math.sqrt(
+		Math.pow(c[0]-c2[0], 2) +
+		Math.pow(c[1]-c2[1], 2) +
+		Math.pow(c[2]-c2[2], 2) 
+	)
+}
+
+function getRGB(data, width, x, y){
+	let i = x+y*width
+	i *= 4 // rgba
+	return [data[i],data[i+1],data[i+2]]
+}
+
+function isPlayer(data, width, x, y){
+	let r=g=b=0
+	let start=190
+	let count=10
+	for(let i=start; i<start+count; i++){
+		let c = getRGB(data, width, x, y+i)
+		r += c[0]
+		g += c[1]
+		b += c[2]
+	}
+	let avgC = [r/count, g/count, b/count]
+	let playerC = [54,61,102]
+	let d = calc(avgC, playerC)
+	//console.log(d)
+	return d<10
+}
+
+function test(){
+	let cv = document.getElementById('cv')
+	cv.width = img.width
+	cv.height = img.height
+
+	let ctx = cv.getContext('2d')
+	window.ctx = ctx
+	ctx.drawImage(img, 0, 0)
+    ctx.fillStyle='#f00'
+	let data = ctx.getImageData(0,0,cv.width,cv.height).data
+
+	let startP = getStartPoint(data)
+	console.log('start:', startP)
+	//let destP = getDestPoint(data)
+	//console.log('dest', destP)
+}
+
+function getStartPoint(data){
+	let arr = []
+	let bg = getRGB(data, cv.width, 10, 10)
+	// scan the pixels top down and find the edge
+	for(let x=0; x<cv.width; x++){
+		for(let y=cv.height/4; y<cv.height*3/4; y++){
+			let c = getRGB(data, cv.width, x, y)
+			let d = calc(c, bg)
+			//console.log(d)
+			if(d>22){
+				//console.log(x,y,c)
+				ctx.fillRect(x,y,3,3)
+				arr.push({x:x, y:y, c:c})
+				break
+			}
+		}
+	}
+
+
+	let sumX=sumY=n=0
+	for(let i in arr){ 
+		let x = arr[i].x
+		let y = arr[i].y
+		// check the pixel color close to the chess
+		if(isPlayer(data, cv.width, x, y)){
+			//console.log(x, y)
+			//ctx.fillRect(x, y, 10, 10)
+			sumX += x
+			sumY += y
+			n++
+		}
+	}
+	let avgX = Math.round(sumX/n)
+	let avgY = Math.round(sumY/n)
+	// get the start point
+	ctx.fillRect(avgX, avgY+205, 10, 10)
+	return {x:avgX, y:avgY+205}
+}
+
+function getDestPoint(data){
+	let arr = []
+	let bg = getRGB(data, cv.width, 10, 10)
+	// scan the pixels left to right and find the top point of the box
+	for(let y=cv.height/4; y<cv.height*3/4; y++){
+		for(let x=0; x<cv.width; x++){
+			let c = getRGB(data, cv.width, x, y)
+			let d = calc(c, bg)
+			if(d>30){
+				ctx.fillRect(x,y,3,3)
+				arr.push({x:x, y:y, c:c})
+				break
+			}
+		}
+		if(arr.length > 100) break
+	}
+
+	for(let i in arr){
+		let x = arr[i].x
+		let y = arr[i].y
+		let c = getRGB(data, cv.width, x+10, y)
+		let d = calc(c, bg)
+		if(d<20){
+			ctx.fillRect(x,y,10,10)
+			return {x:x, y:y}
+		}
+	}
+}
